@@ -46,15 +46,39 @@ jobs:
         run: |
           gcloud compute ssh "${{ secrets.GCE_INSTANCE }}" \
             --zone "${{ secrets.GCE_ZONE }}" \
-            --command "sudo docker pull $IMAGE && \
-              sudo docker stop $IMAGE_NAME || true && \
-              sudo docker rm $IMAGE_NAME || true && \
-              printf 'DATABASE_URL=%s\nJWT_SECRET=%s\nGEMINI_API_KEY=%s\n' \
-                '${{ secrets.DATABASE_URL }}' \
-                '${{ secrets.JWT_SECRET }}' \
-                '${{ secrets.GEMINI_API_KEY }}' | sudo tee /tmp/${IMAGE_NAME}.env >/dev/null && \
+            --command '
+              set -euo pipefail
+
+              IMAGE_NAME="ch-group-chat"
+              REGION="${{ secrets.GCP_REGION }}"
+              HOST="${REGION}-docker.pkg.dev"
+              IMAGE="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.GCP_AR_REPO }}/${IMAGE_NAME}:${{ github.sha }}"
+
+              # Get access token from VM metadata, login Docker to Artifact Registry
+              TOKEN="$(curl -s -H "Metadata-Flavor: Google" \
+                "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin)[\"access_token\"])")"
+
+              echo "$TOKEN" | sudo docker login -u oauth2accesstoken --password-stdin "https://${HOST}"
+
+              # Pull new image
+              sudo docker pull "$IMAGE"
+
+              # Stop/remove old container (ignore if not running)
+              sudo docker stop "$IMAGE_NAME" || true
+              sudo docker rm "$IMAGE_NAME" || true
+
+              # Write env file
+              printf "DATABASE_URL=%s\nJWT_SECRET=%s\nGEMINI_API_KEY=%s\n" \
+                "'"${{ secrets.DATABASE_URL }}"'" \
+                "'"${{ secrets.JWT_SECRET }}"'" \
+                "'"${{ secrets.GEMINI_API_KEY }}"'" \
+                | sudo tee "/tmp/${IMAGE_NAME}.env" >/dev/null
+
+              # Run container
               sudo docker run -d --restart=unless-stopped \
-                --env-file /tmp/${IMAGE_NAME}.env \
-                -p 3000:3000 \
-                --name $IMAGE_NAME \
-                $IMAGE"
+                --env-file "/tmp/${IMAGE_NAME}.env" \
+                -p 80:3000 \
+                --name "$IMAGE_NAME" \
+                "$IMAGE"
+            '
