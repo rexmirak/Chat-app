@@ -1,0 +1,159 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum PresenceStatus {
+  ONLINE
+  OFFLINE
+  AWAY
+}
+
+enum MessageType {
+  TEXT
+  MEDIA
+  DOC
+  LINK
+  SYSTEM
+  AI
+}
+
+enum AttachmentType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOC
+  OTHER
+}
+
+enum NotificationType {
+  MESSAGE
+  MENTION
+  SYSTEM
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  username        String   @unique
+  passwordHash    String
+  displayName     String
+  avatarUrl       String?
+  bio             String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastSeenAt      DateTime?
+  isAiBot         Boolean  @default(false)
+  notificationsOn Boolean  @default(true)
+
+  sessions        RefreshToken[]
+  memberships     ChatParticipant[]
+  messages        Message[]
+  notifications   Notification[]
+}
+
+model RefreshToken {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenHash    String
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+
+  user         User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Chat {
+  id            String   @id @default(cuid())
+  isGroup       Boolean  @default(false)
+  title         String?
+  avatarUrl     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  participants  ChatParticipant[]
+  messages      Message[]
+
+  @@index([updatedAt])
+}
+
+model ChatParticipant {
+  id         String   @id @default(cuid())
+  chatId     String
+  userId     String
+  role       String   @default("member")
+  joinedAt   DateTime @default(now())
+  lastReadAt DateTime?
+  clearedAt  DateTime?
+  isArchived Boolean  @default(false)
+  isMuted    Boolean  @default(false)
+  unreadMark Boolean  @default(false)
+
+  chat       Chat @relation(fields: [chatId], references: [id])
+  user       User @relation(fields: [userId], references: [id])
+
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id          String      @id @default(cuid())
+  chatId      String
+  senderId    String
+  type        MessageType
+  content     String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  replyToId   String?
+  isDeleted   Boolean     @default(false)
+
+  chat        Chat        @relation(fields: [chatId], references: [id])
+  sender      User        @relation(fields: [senderId], references: [id])
+  attachments Attachment[]
+
+  @@index([chatId, createdAt])
+  @@index([senderId])
+}
+
+model Attachment {
+  id          String         @id @default(cuid())
+  messageId   String
+  type        AttachmentType
+  url         String
+  filename    String
+  sizeBytes   Int
+  mimeType    String
+  width       Int?
+  height      Int?
+  durationMs  Int?
+  createdAt   DateTime       @default(now())
+
+  message     Message @relation(fields: [messageId], references: [id])
+
+  @@index([messageId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String?
+  metadata  String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user      User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+}
