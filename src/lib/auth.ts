@@ -1,4 +1,4 @@
-import type { User } from "@/generated/prisma/client";
+import type { User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAccessToken, createRefreshToken, hashToken } from "@/lib/tokens";
 
