@@ -12,21 +12,25 @@ jobs:
     permissions:
       contents: read
       id-token: write
+
     env:
       IMAGE_NAME: ch-group-chat
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ✅ Workload Identity Federation (NO service account key)
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker auth
+      - name: Configure Docker auth (Artifact Registry)
         run: gcloud auth configure-docker "${{ secrets.GCP_REGION }}-docker.pkg.dev" --quiet
 
       - name: Build and push image
@@ -36,6 +40,8 @@ jobs:
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
 
+      # Optional (recommended): use IAP tunnel if you don't want a public SSH port
+      # Add --tunnel-through-iap if configured
       - name: Deploy to Compute Engine
         run: |
           gcloud compute ssh "${{ secrets.GCE_INSTANCE }}" \
